@@ -16,7 +16,9 @@ bash executable.
 * You can pass an "--xbash-launcher [path to bash executable]" argument to
   launch bash from a non-standard path. You can also use this to e.g. chain
   xbash with [outbash](https://github.com/xilun/cbwin/releases) from
-  [xilun/cbwin](https://github.com/xilun/cbwin).
+  [xilun/cbwin](https://github.com/xilun/cbwin). In fact, xbash was derived from
+  outbash and half of the code in this thing basically still the same. Its just
+  less :)
 
 ## Installation
 
