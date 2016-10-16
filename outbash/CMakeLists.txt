@@ -2,38 +2,19 @@ cmake_minimum_required(VERSION 2.8.11)
 
 project(cbwin)
 
-add_executable(outbash
-               utf.h
-               utf.cpp
-               env.h
-               env.cpp
-               process.h
-               process.cpp
-               win_except.h
-               win_except.cpp
-               ntsuspend.h
-               ntsuspend.cpp
-               security.h
-               security.cpp
-               job.h
-               job.cpp
-               handle.h
-               tcp_help.h
-               tcp_help.cpp
-               resources.h
-               outbash.cpp
-               outbash.rc)
+add_executable(xbash
+               xbash.cpp
+               xbash.rc)
 
 add_definitions(/D_UNICODE /DUNICODE /DNOMINMAX)
 
 if(MSVC)
-
     if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-        set_target_properties(outbash PROPERTIES COMPILE_FLAGS "/Wall -Wextra")
+        set_target_properties(xbash PROPERTIES COMPILE_FLAGS "/Wall -Wextra")
     else()
         # Wall is basically unusable as is with MSVC, because it needlessly chokes
         # on crt and system headers.
-        set_target_properties(outbash PROPERTIES COMPILE_FLAGS "/W4 /D_CRT_SECURE_NO_WARNINGS")
+        set_target_properties(xbash PROPERTIES COMPILE_FLAGS "/W4 /D_CRT_SECURE_NO_WARNINGS")
     endif()
 
     set(variables
@@ -57,6 +38,6 @@ if(MSVC)
         endif()
     endforeach()
 
-    target_link_libraries(outbash debug -NODEFAULTLIB:libucrtd.lib debug ucrtd.lib Shlwapi.lib)
-    target_link_libraries(outbash optimized -NODEFAULTLIB:libucrt.lib optimized ucrt.lib Shlwapi.lib)
+    target_link_libraries(xbash debug -NODEFAULTLIB:libucrtd.lib debug ucrtd.lib Shlwapi.lib)
+    target_link_libraries(xbash optimized -NODEFAULTLIB:libucrt.lib optimized ucrt.lib Shlwapi.lib)
 endif()
