@@ -1,0 +1,6 @@
+#ifndef XBASH_RESOURCES_H
+#define XBASH_RESOURCES_H 1
+
+#define IDI_ICON1 101
+
+#endif /* XBASH_RESOURCES_H */
