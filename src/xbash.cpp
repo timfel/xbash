@@ -85,7 +85,7 @@ public:
 							 "xbash, a launcher for WSL bash that starts an X server and propagates its DISPLAY to WSL.\n\n"
 							 "The default X server is Xming, it is searched by its association to .xlaunch files. "
 							 "If you use another X server or have not associated Xming with .xlaunch files, "
-							 "you must pass the path for the X server to launch on display :0.\n\n"
+							 "you must pass the path for the X server to launch on display :0 (tcp port 6000).\n\n"
 							 "The default arguments to Xming are \"" XMINGARGS "\". "
 							 "You can override these, and if you have the \"[dpi]\" placeholder in your args, "
 							 "this will be replaced with the dynamically determined dpi.\n\n"
@@ -196,6 +196,7 @@ private:
 				return true;
 			}
 		}
+		closesocket(ListenSocket);
 		freeaddrinfo(result);
 		return false;
 	}
