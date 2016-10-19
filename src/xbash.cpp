@@ -37,6 +37,7 @@
 #define XMINGARGS ":0 -br -multiwindow -clipboard -compositewm -wgl -dpi [dpi]"
 #define DEFAULT_X_PORT "6000"
 WSADATA wsaData;
+HWND Stealth;
 
 void Win32_perror(const char* what)
 {
@@ -73,7 +74,8 @@ public:
         m_escaped_bash_cmd_line_params(),
 		m_x_launcher(),
 		m_x_args(),
-        m_has_bash_exe_tilde(false)
+        m_has_bash_exe_tilde(false),
+		m_hide_console(false)
     {
         const wchar_t* p = get_cmd_line_params();
 
@@ -93,6 +95,7 @@ public:
 							 "\t--xbash-launcher [path to bash executable]\n"
 							 "\t--xbash-xserver [path to X server]\n"
 							 "\t--xbash-xserver-args [commandlineargs for X server]\n"
+							 "\t--xbash-hide-console\n"
 							 "All other arguments are passed to the bash executable.\n\n");
 				break;
 			} else if (param.find(L"--xbash-") != 0) {
@@ -103,6 +106,8 @@ public:
                     std::fprintf(stderr, "xbash: invalid --xbash-launcher param %S\n", m_bash_launcher.c_str());
                     std::exit(1);
                 }
+			} else if (param == L"--xbash-hide-console") {
+				m_hide_console = true;
 			} else if (param == L"--xbash-xserver") {
 				m_x_launcher = parse_argv_param(new_p, &new_p);
 				if (m_x_launcher.empty() || m_bash_launcher.find(L'"') != std::wstring::npos) {
@@ -154,10 +159,21 @@ public:
 			return 1;
 		}
 
+		if (m_hide_console) {
+			hide_console();
+		}
+
 		return 0;
 	}
 
 private:
+	static void hide_console() {
+		Sleep(3000);
+		AllocConsole();
+		Stealth = FindWindowA("ConsoleWindowClass", NULL);
+		ShowWindow(Stealth, 0);
+	}
+
 	static bool is_listening_on_port(const char* port) {
 		struct addrinfo *result = NULL, hints;
 
@@ -338,12 +354,12 @@ private:
 	std::wstring    m_x_launcher;
 	std::wstring    m_x_args;
     bool            m_has_bash_exe_tilde;
+	bool            m_hide_console;
 };
 
 int main()
 {
 	PROCESS_INFORMATION pi = { 0 };
-
 	int iResult = WSAStartup(MAKEWORD(2, 2), &wsaData);
 	if (iResult != 0) {
 		Win32_perror("Could not bring up winsock");
@@ -354,6 +370,7 @@ int main()
 		std::exit(EXIT_FAILURE);
 	}
     CloseHandle(pi.hThread);
+	Sleep(2000);
 	WaitForSingleObject(pi.hProcess, INFINITE);
 	CloseHandle(pi.hProcess);
     std::exit(EXIT_SUCCESS);
