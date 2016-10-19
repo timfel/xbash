@@ -20,15 +20,23 @@
  * SOFTWARE.
  */
 
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+
 #include <Windows.h>
 #include <Shlwapi.h>
 #include <string>
 #include <locale>
 #include <codecvt>
+#include <winsock2.h>
+#include <ws2tcpip.h>
 
 #pragma comment(lib, "Ws2_32.lib")
 
-#define XMINGARGS ":0 -br -multiwindow -clipboard -compositewm -wgl -silent-dup-error -dpi"
+#define XMINGARGS ":0 -br -multiwindow -clipboard -compositewm -wgl -dpi [dpi]"
+#define DEFAULT_X_PORT "6000"
+WSADATA wsaData;
 
 void Win32_perror(const char* what)
 {
@@ -64,6 +72,7 @@ public:
       : m_bash_launcher(get_default_bash_launcher()),
         m_escaped_bash_cmd_line_params(),
 		m_x_launcher(),
+		m_x_args(),
         m_has_bash_exe_tilde(false)
     {
         const wchar_t* p = get_cmd_line_params();
@@ -76,12 +85,14 @@ public:
 							 "xbash, a launcher for WSL bash that starts an X server and propagates its DISPLAY to WSL.\n\n"
 							 "The default X server is Xming, it is searched by its association to .xlaunch files. "
 							 "If you use another X server or have not associated Xming with .xlaunch files, "
-							 "you must pass the entire commandline for the X server to launch on display :0. "
-							 "The default arguments to Xming are \"" XMINGARGS " [dpi]\". "
-							 "If you want to change these, you also must pass the entire commandline for Xming.\n\n"
+							 "you must pass the path for the X server to launch on display :0.\n\n"
+							 "The default arguments to Xming are \"" XMINGARGS "\". "
+							 "You can override these, and if you have the \"[dpi]\" placeholder in your args, "
+							 "this will be replaced with the dynamically determined dpi.\n\n"
 							 "Arguments:\n"
 							 "\t--xbash-launcher [path to bash executable]\n"
-							 "\t--xbash-xserver [commandline for X server]\n"
+							 "\t--xbash-xserver [path to X server]\n"
+							 "\t--xbash-xserver-args [commandlineargs for X server]\n"
 							 "All other arguments are passed to the bash executable.\n\n");
 				break;
 			} else if (param.find(L"--xbash-") != 0) {
@@ -94,8 +105,14 @@ public:
                 }
 			} else if (param == L"--xbash-xserver") {
 				m_x_launcher = parse_argv_param(new_p, &new_p);
-				if (m_x_launcher.empty()) {
+				if (m_x_launcher.empty() || m_bash_launcher.find(L'"') != std::wstring::npos) {
 					std::fprintf(stderr, "xbash: invalid --xbash-xserver param %S\n", m_x_launcher.c_str());
+					std::exit(1);
+				}
+			} else if (param == L"--xbash-xserver-args") {
+				m_x_args = parse_argv_param(new_p, &new_p);
+				if (m_x_args.empty()) {
+					std::fprintf(stderr, "xbash: invalid --xbash-xserver-args param %S\n", m_x_args.c_str());
 					std::exit(1);
 				}
             } else {
@@ -141,34 +158,88 @@ public:
 	}
 
 private:
+	static bool is_listening_on_port(const char* port) {
+		struct addrinfo *result = NULL, hints;
+
+		ZeroMemory(&hints, sizeof(hints));
+		hints.ai_family = AF_INET;
+		hints.ai_socktype = SOCK_STREAM;
+		hints.ai_protocol = IPPROTO_TCP;
+		hints.ai_flags = AI_PASSIVE;
+
+		// Resolve the local address and port to be used by the server
+		int iResult = getaddrinfo(NULL, port, &hints, &result);
+		if (iResult != 0) {
+			Win32_perror("xbash: getaddrinfo failed");
+			WSACleanup();
+			std::exit(EXIT_FAILURE);
+		}
+
+		SOCKET ListenSocket = socket(result->ai_family, result->ai_socktype, result->ai_protocol);
+		if (ListenSocket == INVALID_SOCKET) {
+			Win32_perror("xbash: error checking for running X server");
+			freeaddrinfo(result);
+			WSACleanup();
+			std::exit(EXIT_FAILURE);
+		}
+
+		iResult = bind(ListenSocket, result->ai_addr, (int)result->ai_addrlen);
+		if (iResult == SOCKET_ERROR) {
+			if (WSAGetLastError() != WSAEADDRINUSE) {
+				Win32_perror("xbash: checking if we can bind to the X server port failed");
+				freeaddrinfo(result);
+				closesocket(ListenSocket);
+				WSACleanup();
+				std::exit(EXIT_FAILURE);
+			} else {
+				std::fprintf(stdout, "xbash: Port 6000 already in use, not launching X\n");
+				return true;
+			}
+		}
+		freeaddrinfo(result);
+		return false;
+	}
+
 	const wchar_t* start_xserver()
 	{
-		STARTUPINFO si = { 0 };
-		PROCESS_INFORMATION pi = { 0 };
-		HDC screen;
-		std::wstring cmdline;
+		if (!is_listening_on_port(DEFAULT_X_PORT)) {
+			STARTUPINFO si = { 0 };
+			PROCESS_INFORMATION pi = { 0 };
+			HDC screen;
+			std::wstring cmdline;
 
-		screen = GetDC(0);
-		int dpi = GetDeviceCaps(screen, LOGPIXELSX); // Assuming square pixels
-		ReleaseDC(0, screen);
+			screen = GetDC(0);
+			int dpi = GetDeviceCaps(screen, LOGPIXELSX); // Assuming square pixels
+			ReleaseDC(0, screen);
 
-		if (m_x_launcher.empty()) {
-			cmdline = get_default_x_launcher() + L" " +
-				std::wstring_convert<std::codecvt_utf8_utf16<wchar_t>>().from_bytes(XMINGARGS) + L" " +
-				std::to_wstring(dpi);
-		} else {
-			cmdline = m_x_launcher;
+			if (m_x_launcher.empty()) {
+				cmdline = get_default_x_launcher() + L" ";
+			} else {
+				cmdline = m_x_launcher + L" ";
+			}
+			if (m_x_args.empty()) {
+				cmdline += std::wstring_convert<std::codecvt_utf8_utf16<wchar_t>>().from_bytes(XMINGARGS);
+			} else {
+				cmdline += m_x_args;
+			}
+			std::wstring wdpistr = std::to_wstring(dpi);
+			std::wstring dpiplaceholder = L"[dpi]";
+			for (size_t pos = 0; ; pos += wdpistr.length()) {
+				pos = cmdline.find(dpiplaceholder, pos);
+				if (pos == std::wstring::npos) break;
+				cmdline.erase(pos, dpiplaceholder.length());
+				cmdline.insert(pos, wdpistr);
+			}
+
+			si.cb = sizeof(si);
+			if (CreateProcessW(NULL,
+							   &cmdline[0],
+							   NULL, NULL, FALSE, NORMAL_PRIORITY_CLASS, NULL, NULL, &si, &pi) == 0) {
+				Win32_perror("xbash: Xming");
+				std::fprintf(stderr, "xbash: CreateProcess failed (%d) for command: %S\n", ::GetLastError(), cmdline.c_str());
+				return NULL;
+			}
 		}
-
-		si.cb = sizeof(si);
-		if (CreateProcessW(NULL,
-						   &cmdline[0],
-						   NULL, NULL, FALSE, NORMAL_PRIORITY_CLASS, NULL, NULL, &si, &pi) == 0) {
-			Win32_perror("xbash: Xming");
-			std::fprintf(stderr, "xbash: CreateProcess failed (%d) for command: %S\n", ::GetLastError(), cmdline.c_str());
-			return NULL;
-		}
-
 		return L"localhost:0.0";
 	}
 
@@ -264,12 +335,20 @@ private:
     std::wstring    m_bash_launcher;
     std::wstring    m_escaped_bash_cmd_line_params;
 	std::wstring    m_x_launcher;
+	std::wstring    m_x_args;
     bool            m_has_bash_exe_tilde;
 };
 
 int main()
 {
 	PROCESS_INFORMATION pi = { 0 };
+
+	int iResult = WSAStartup(MAKEWORD(2, 2), &wsaData);
+	if (iResult != 0) {
+		Win32_perror("Could not bring up winsock");
+		std::exit(EXIT_FAILURE);
+	}
+
 	if (CCmdLine().start_command(pi) != 0) {
 		std::exit(EXIT_FAILURE);
 	}

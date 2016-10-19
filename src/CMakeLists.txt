@@ -38,6 +38,6 @@ if(MSVC)
         endif()
     endforeach()
 
-    target_link_libraries(xbash debug -NODEFAULTLIB:libucrtd.lib debug ucrtd.lib Shlwapi.lib)
-    target_link_libraries(xbash optimized -NODEFAULTLIB:libucrt.lib optimized ucrt.lib Shlwapi.lib)
+    target_link_libraries(xbash debug -NODEFAULTLIB:libucrtd.lib debug ucrtd.lib Shlwapi.lib Ws2_32.lib)
+    target_link_libraries(xbash optimized -NODEFAULTLIB:libucrt.lib optimized ucrt.lib Shlwapi.lib Ws2_32.lib)
 endif()
